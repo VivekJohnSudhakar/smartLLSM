@@ -12,9 +12,6 @@ Created on Tue Feb  9 18:56:25 2021
 import sys, os, glob, cv2, re
 import numpy as np
 from scipy import ndimage
-import logging
-#set to debug to get debugging print statements
-logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.WARNING)
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' # silence TensorFlow error message about not being optimized...
 
 #----------------------------------USER INPUT---------------------------------#
@@ -33,9 +30,9 @@ ANNOTATOR_INITIALS = 'JT'
 # boolean to use automatic neural network filter
 nn_filter = True
 # path to neural network filter (should be *.hdf5)
-path_to_nn_filter = r"S:\vivek\\smartLLSM Demo Data\smartLLSM Demo Data\annotator_filter.hdf5"
+path_to_nn_filter = '/path/to/annotator_filter.hdf5'
 # threshold confidence to classify "unique" cells/automatically filter tiles
-filter_thresh = 0.6 #0.7
+filter_thresh = 0.7
 
 # boolean to use pre-filtered file list
 prefiltered = False
@@ -43,7 +40,7 @@ prefiltered = False
 path_to_prefiltered_files = ''
 
 # path to data (optionally passed in terminal - use '$(pwd)' to pass pwd)
-path_to_data = r"S:\vivek\cellpose_3D\masked_images_with_img"  #"S:\vivek\\smartLLSM Demo Data\smartLLSM Demo Data\annotation_demo\annotation_demo"
+path_to_data = '/path/to/Cellpose_tiles'
 
 # labels dictionary
 #!!!!!!!!!!!! WARNING, KEYS MUST BE UNIQUE AND NOT CONTAIN 'temp' !!!!!!!!!!!!#
@@ -72,10 +69,10 @@ back_key = ['b']
 exit_key = ['q']
 
 # threshold percentage of area needed to see edge cell/automatically assign edge cell
-edge_area_thresh = 0.3 #0.7
+edge_area_thresh = 0.7
 
 # half of size to show cell
-cell_half_size = 50 #100
+cell_half_size = 100
 
 # half of size to show tile (must be < 800/2=400)
 # set <= 0 to display whole tile
@@ -120,16 +117,12 @@ else:
     tiles = [file for file in tiles if not '_finished' in file]
     # remove preprocessed file list
     tiles = [file for file in tiles if not '_preprocessed' in file]
-    
-    print("len tiles: ",len(tiles))
-    print("sample tile  ",tiles[0])
 
 # folder for annotation results
 if 'data_' in path_to_data:
     results_folder = os.path.join(os.path.dirname(path_to_data), 'annotation_results')
 else:
     results_folder = os.path.join(path_to_data, 'annotation_results')
-print("results folder: ",results_folder)
 
 # set up annotator if there are files to annotate
 if tiles:
@@ -144,46 +137,31 @@ if tiles:
         def nn_temp(a,b):return True
         model = tf.keras.models.load_model(path_to_nn_filter, custom_objects={'f1_metric':nn_temp})
         # set filter class/column
-        output_classes = np.array(model.name.split('__temp__')) #
-        #logging.debug("output classes: ",output_classes)
+        output_classes = np.array(model.name.split('__temp__'))
         filter_class = 'unique'
         while not filter_class in output_classes:
             filter_class = input('Invalid filter class, pick from the following: '\
                                  +str(output_classes)+'\n\tfilter class: ')
         
         filter_col = int(np.where(filter_class == output_classes)[0])
-        #logging.debug(filter_col)
+        
         # filtering function to determine if tile contains interesting cell
         def interesting(nn_model, raw_tile, masks_tile, thresh, thresh_col):
         
             # find number of identified cells
-            #num_masks = np.max(masks_tile)
-            num_masks = len(np.unique(masks))
-            mask_id_values = np.unique(masks)
+            num_masks = np.max(masks_tile)
             
             # loop through each cell and check if interesting
-            #for mask_id in range(1,num_masks+1):
-            for mask_id in mask_id_values:
-                if mask_id == 0:
-                    continue
-                temp =  masks_tile==mask_id
-                #print("temp shape in interesting: ",temp.shape)
-                #print("mask_id: ",mask_id)
-                if temp.shape[0] == 0:
-                    #return False
-                    continue
+            for mask_id in range(1,num_masks+1):
+            
                 # find center of mass (as integer for indexing)
                 center = ndimage.center_of_mass(masks_tile==mask_id)
                 center = np.array(center).astype(int)
-                logging.debug("center: %s",center)
                 
                 # create image to test for filtering with nn
                 nn_half_size = nn_model.input_shape[1]//2
-                logging.debug("nn_half_size: %s",nn_half_size)
                 r1_o = center[0]-nn_half_size
                 c1_o = center[1]-nn_half_size
-                logging.debug("r1_o %s",r1_o)
-                logging.debug("c1_o %s",c1_o)
                 # find bounding box indices to fit in tile
                 r1_nn = max(0, center[0]-nn_half_size)
                 r2_nn = min(raw_tile.shape[0], center[0]+nn_half_size)
@@ -192,11 +170,6 @@ if tiles:
                 # pad new bounding box with constant value (mean, 0, etc.)
                 nn_test = np.zeros([nn_half_size*2, nn_half_size*2])
                 nn_test += raw_tile[masks_tile==0].mean().astype('int')
-                logging.debug("r1_nn: %s",r1_nn)
-                logging.debug("r2_nn: %s",r2_nn)
-                logging.debug("c1_nn: %s",c1_nn)
-                logging.debug("c2_nn: %s",c2_nn)
-                
                 # store original bb in new bb
                 nn_test[r1_nn-r1_o:r2_nn-r1_o,c1_nn-c1_o:c2_nn-c1_o] = raw_tile[r1_nn:r2_nn,c1_nn:c2_nn]
         
@@ -211,8 +184,6 @@ if tiles:
                 if preds[thresh_col] > thresh:
                     return True
                 else:
-                    
-                    #print("continuing in interesting func")
                     continue
     
     # raise error if key conflict/duplicate keys found
@@ -299,8 +270,8 @@ cv2.waitKey(1)
 
 # init exited to see if user exited annotator
 exited = False
-centers_file = r'S:\vivek\cellpose_3D\masked_images_with_img\centers'
-for tile in [r"S:\vivek\cellpose_3D\masked_images_with_img\crop_232_5_7_seg.npy"]: #tiles: #Each tile is 3D .npy file
+
+for tile in tiles:
     
     # load Cellpose data (raw image, masks, and outlines)
     if prefiltered:
@@ -312,389 +283,316 @@ for tile in [r"S:\vivek\cellpose_3D\masked_images_with_img\crop_232_5_7_seg.npy"
     else:
         data = np.load(tile, allow_pickle=True).item()
     
-    #Now loop for eaach 2-D XY slice across Z
-    #Still z,y,x dim
-    raw_full = data['img']
-    masks_full = data['masks']
-    outlines_full = data['outlines']
-    labels_full = []
-    print(np.unique(masks_full))
-    visited = [0 for _ in range(masks_full.max()+1)]
-    for z in range(raw_full.shape[0]): 
-        raw = raw_full[z] 
-        masks = masks_full[z]
-        outlines = outlines_full[z]
-        print("z slice: ",z)
-        #print("unique masks: ",np.unique(masks))
-        #if z < 230:
-        #    continue
-        #else:
-        #    exit()
+    raw = data['img']
+    masks = data['masks']
+    outlines = data['outlines']
 
-        # if using filter, check for interesting cells in tile and skip if none found 
-        #Do it for each slice now
+    # if using filter, check for interesting cells in tile and skip if none found
+    if nn_filter and not interesting(model, raw, masks, filter_thresh, filter_col):
+        print(os.path.relpath(tile)+' - FILTERED')
+        continue
+
+    # print current tile
+    print('-'*53)
+    print('\''+os.path.relpath(tile).upper()+'\'')
+
+    # find number of identified cells
+    num_masks = np.max(masks)
+
+    # init repeat and correct (to catch if number of labels does not equal number of cells)
+    repeat = False
+    correct = False
+    
+############# LOOP UNTIL NUMBER OF LABELS MATCHES NUMBER OF CELLS #############
+
+    while not correct:
         
-        #The 2D slice is Y,X. we change this to X,Y
-        #raw = raw.T
-        #masks = masks.T 
-        #2outline = outlines.T
-        #exit()
-        #if nn_filter and not interesting(model, raw, masks, filter_thresh, filter_col):
-        #    print(os.path.relpath(tile)+f'{z} slice - FILTERED' + f"nn_filter - {nn_filter}")
-        #    continue
-
-        # print current tile
-        print('-'*53)
-        print('\''+os.path.relpath(tile).upper()+'\''+f'{z} slice')
-
-        # find number of identified cells
-        #num_masks = np.max(masks)
-        #Since the cells in a slice need not be incrementally numbered. i.e if cell 1,4 is over, slice will just have 2,3,5
-        num_masks = len(np.unique(masks))
-        mask_id_values = np.unique(masks)
-        # init repeat and correct (to catch if number of labels does not equal number of cells)
-        repeat = False
-        correct = False
+        # init cell label and list for cell labels in tile
+        label = None
+        labels=[]
         
-    ############# LOOP UNTIL NUMBER OF LABELS MATCHES NUMBER OF CELLS #############
+        # init mask_id/cell number
+        mask_id = 1
+        
+####################### LOOP THROUGH EVERY CELL IN TILE #######################
 
-        while not correct:
+        while mask_id <=num_masks:
             
-            # init cell label and list for cell labels in tile
-            label = None
-            #labels=[]
-            #Since now the label index no longer matches with mask_id, use a dict instead to index on mask_id
-            labels = {}
-            # init mask_id/cell number
-            #mask_id = 1
-            mask_id_index = 0
-            mask_id = mask_id_values[mask_id_index]
-    ####################### LOOP THROUGH EVERY CELL IN TILE #######################
+            # print cell ID
+            print('cell: %2d of %2d --> class: ' % (mask_id, num_masks), end='')
+
+            # find center of mass (as integer for indexing)
+            center = ndimage.center_of_mass(masks==mask_id)
+            center = np.array(center).astype(int)
             
-            #while mask_id <=num_masks:
-            while mask_id_index < num_masks:    
-                mask_id = mask_id_values[mask_id_index]
-                if mask_id == 0:
-                    mask_id_index += 1
-                    continue
-                #optimization : if the mask is aldready seen in previous slice since that label is present this can be skipped
-                if visited[mask_id] != 0:
-                    labels[mask_id] = 'seen before'
-                    visited[mask_id] += 1
-                    mask_id_index += 1
-                    continue
-                
-                # print cell ID
-                #print('cell: %2d of %2d --> class: ' % (mask_id, num_masks), end='')
-                print('cell mask ID: %2d. Cell %2d of %2d in this slice --> class: ' % (mask_id,mask_id_index+1, num_masks), end='')
-                # find center of mass (as integer for indexing)
-                #center = ndimage.center_of_mass(masks==mask_id)
-                center = ndimage.center_of_mass(masks==mask_id)
-                center = np.array(center).astype(int)
-                print("mask_id: ",mask_id)
-                print("center: ",center)
-                # find bounding box indices for showing isolated cell
-                r1 = max(0, center[0]-cell_half_size)
-                r2 = min(raw.shape[0], center[0]+cell_half_size)
-                c1 = max(0, center[1]-cell_half_size)
-                c2 = min(raw.shape[1], center[1]+cell_half_size)
+            # find bounding box indices for showing isolated cell
+            r1 = max(0, center[0]-cell_half_size)
+            r2 = min(raw.shape[0], center[0]+cell_half_size)
+            c1 = max(0, center[1]-cell_half_size)
+            c2 = min(raw.shape[1], center[1]+cell_half_size)
+        
+            # check bounding box to see if cell on edge            
+            area_ratio = (r2-r1)*(c2-c1)/(cell_half_size*2)**2
+    
+#-------------automatically classify as edge if too close to edge-------------#
+
+            if area_ratio < edge_area_thresh:
+                label = edge_key
+                # add 'auto' designation for when later trying to go back
+                labels.append(str(label) + 'auto')
+                print(labels_dict[label]+' (automatically assigned)')
+                mask_id += 1
+                continue
             
-                # check bounding box to see if cell on edge            
-                area_ratio = (r2-r1)*(c2-c1)/(cell_half_size*2)**2
-        
-    #-------------automatically classify as edge if too close to edge-------------#
-
-                if area_ratio < edge_area_thresh:
-                    label = edge_key
-                    # add 'auto' designation for when later trying to go back
-                    #labels.append(str(label) + 'auto')
-                    labels[mask_id] = str(label) + 'auto'
-                    visited[mask_id] += 1
-                    print(labels_dict[label]+' (automatically assigned)')
-                    #mask_id += 1
-                    mask_id_index += 1
-                    continue
-                
-                # fix edge case if most of area is in frame
-                else:
-                    rfix = cell_half_size*2 - (r2-r1)
-                    cfix = cell_half_size*2 - (c2-c1)
-                    if r1 == 0: r2 += rfix
-                    if r2 == raw.shape[0]: r1 -= rfix
-                    if c1 == 0: c2 += cfix
-                    if c2 == raw.shape[1]: c1 -= cfix
-        
-                # find bounding box indices for showing tile if given size
-                if show_half_size:                
-                    show_r1 = max(0, center[0]-show_half_size)
-                    show_r2 = min(raw.shape[0], center[0]+show_half_size)
-                    show_c1 = max(0, center[1]-show_half_size)
-                    show_c2 = min(raw.shape[1], center[1]+show_half_size)
-                    show_rfix = show_half_size*2 - (show_r2-show_r1)
-                    show_cfix = show_half_size*2 - (show_c2-show_c1)
-                    if show_r1 == 0: show_r2 += show_rfix
-                    if show_r2 == raw.shape[0]: show_r1 -= show_rfix
-                    if show_c1 == 0: show_c2 += show_cfix
-                    if show_c2 == raw.shape[1]: show_c1 -= show_cfix
-                else:
-                    show_r1 = 0
-                    show_r2 = raw.shape[0]
-                    show_c1 = 0
-                    show_c2 = raw.shape[1]
-                
-    #--------------------------construct images to show---------------------------#
-
-                # copy raw to show outline
-                raw_outline = raw.copy()
-                raw_outline[outlines==mask_id] = raw.max()
-                raw_outline = raw_outline[show_r1:show_r2,show_c1:show_c2]
-                # copy raw to show isolated cell
-                raw_isolate = raw.copy()
-                raw_isolate[masks!=mask_id] = 0
-                # resize isolated cell to show with tile
-                raw_isolate = raw_isolate[r1:r2,c1:c2]
-                raw_isolate = cv2.resize(raw_isolate, raw_outline.shape)
-                
-                # shorthand for arranging images
-                left_img = raw_outline
-                right_img = raw_isolate
-                
-                # add white border between panels
-                col = 5
-                border = raw.max()*np.ones([left_img.shape[0], col])
-                left_img = np.concatenate([left_img, border], axis=1)
-                
-                # stitch left and right windows together
-                together = np.concatenate([left_img/left_img.max(), right_img/right_img.max()], axis=1)
-
-    #---------------------------set up annotator window---------------------------#
-
-                # show cell number in window with extra info as necessary
-                #window = os.path.relpath(tile).upper()+': CELL '+str(mask_id)+' OF '+str(num_masks)
-                window = os.path.relpath(tile).upper()+': CELL '+str(mask_id_index)+' OF '+str(num_masks)
-                if repeat:
-                    window = 'ERROR: NUMBER OF LABELS DID NOT MATCH NUMBER OF CELLS, REPEATING '+os.path.relpath(tile).upper()
-                    repeat = False
-                elif label == edge_key:
-                    window += ' (previous cell(s) on edge)'
-                    
-                # show annotator window and image
-                cv2.namedWindow('Cell Annotator', cv2.WINDOW_AUTOSIZE)
-                cv2.setWindowTitle('Cell Annotator', window)
-                cv2.imshow('Cell Annotator', together)
-                
-                # cv2.resizeWindow('Cell Annotator', together.shape[1], together.shape[0]) 
-        
-    #----------------------------------annotate-----------------------------------#
-                
-                # init back (to allow for returning to previous cell)
-                back = False
-                
-                # init valid to check if response is valid
-                valid = False
-                
-    ################# LOOP UNTIL VALID LABEL RESPONSE IS DETECTED #################
-
-                while not valid:
+            # fix edge case if most of area is in frame
+            else:
+                rfix = cell_half_size*2 - (r2-r1)
+                cfix = cell_half_size*2 - (c2-c1)
+                if r1 == 0: r2 += rfix
+                if r2 == raw.shape[0]: r1 -= rfix
+                if c1 == 0: c2 += cfix
+                if c2 == raw.shape[1]: c1 -= cfix
+    
+            # find bounding box indices for showing tile if given size
+            if show_half_size:                
+                show_r1 = max(0, center[0]-show_half_size)
+                show_r2 = min(raw.shape[0], center[0]+show_half_size)
+                show_c1 = max(0, center[1]-show_half_size)
+                show_c2 = min(raw.shape[1], center[1]+show_half_size)
+                show_rfix = show_half_size*2 - (show_r2-show_r1)
+                show_cfix = show_half_size*2 - (show_c2-show_c1)
+                if show_r1 == 0: show_r2 += show_rfix
+                if show_r2 == raw.shape[0]: show_r1 -= show_rfix
+                if show_c1 == 0: show_c2 += show_cfix
+                if show_c2 == raw.shape[1]: show_c1 -= show_cfix
+            else:
+                show_r1 = 0
+                show_r2 = raw.shape[0]
+                show_c1 = 0
+                show_c2 = raw.shape[1]
             
-                    # wait for user entry and store
-                    res = cv2.waitKey(0)
-                    label = chr(res)
-                    # convert label to integer if number
-                    try:
-                        label = int(label)
-                    except ValueError:
-                        label = label
+#--------------------------construct images to show---------------------------#
 
-    #----------------------------------exit key-----------------------------------#
+            # copy raw to show outline
+            raw_outline = raw.copy()
+            raw_outline[outlines==mask_id] = raw.max()
+            raw_outline = raw_outline[show_r1:show_r2,show_c1:show_c2]
+            # copy raw to show isolated cell
+            raw_isolate = raw.copy()
+            raw_isolate[masks!=mask_id] = 0
+            # resize isolated cell to show with tile
+            raw_isolate = raw_isolate[r1:r2,c1:c2]
+            raw_isolate = cv2.resize(raw_isolate, raw_outline.shape)
+            
+            # shorthand for arranging images
+            left_img = raw_outline
+            right_img = raw_isolate
+            
+            # add white border between panels
+            col = 5
+            border = raw.max()*np.ones([left_img.shape[0], col])
+            left_img = np.concatenate([left_img, border], axis=1)
+            
+            # stitch left and right windows together
+            together = np.concatenate([left_img/left_img.max(), right_img/right_img.max()], axis=1)
 
-                    # if exit key is pressed, activate exited condition and break out of valid loop
-                    if label in exit_key:
-                        exited = True
-                        print('\n')
-                        print('-'*53)
-                        print('EXITING ANNOTATOR...')
-                        break
-                    
-    #---------------------------show labels dictionary----------------------------#
+#---------------------------set up annotator window---------------------------#
 
-                    elif label in show_label:
-                        print('\n')
-                        print('labels:')
-                        for k,v in labels_dict.items():
-                            if v=='edge':
-                                print('\t%3s: %-8s\t(automatically assigned)' %(k,v))
-                            else:
-                                print('\t%3s: %s' %(k,v))
-                        print()
-                        print('manually assign edge key(s): ', man_edge)
-                        print('back key(s): ', back_key)
-                        print('exit key(s): ', exit_key)
-                        print()
-                        #print('cell: %2d of %2d --> class: ' % (mask_id, num_masks), end='')
-                        print('cell: %2d of %2d --> class: ' % (mask_id_index, num_masks), end='')
-                        '''
-                        #----------------------------------back key-----------------------------------#                
-                        
-                        # if back key is pressed, attempt to go back one cell
-                        elif label in back_key:
-                            # reverse through labels to check if possible
-                            for index, lab in enumerate(labels[::-1]):    
-                                # if possible, reset to that cell
-                                if lab != str(edge_key) + 'auto':
-                                    # activate back condition and valid input
-                                    back = True
-                                    valid = True
-                                    # reset cell number
-                                    mask_id = len(labels) - index
-                                    # reset labels
-                                    labels = labels[:mask_id-1]
-                                    print('BACK TO CELL', mask_id)
-                                    break
+            # show cell number in window with extra info as necessary
+            window = os.path.relpath(tile).upper()+': CELL '+str(mask_id)+' OF '+str(num_masks)
+            if repeat:
+                window = 'ERROR: NUMBER OF LABELS DID NOT MATCH NUMBER OF CELLS, REPEATING '+os.path.relpath(tile).upper()
+                repeat = False
+            elif label == edge_key:
+                window += ' (previous cell(s) on edge)'
+                
+            # show annotator window and image
+            cv2.namedWindow('Cell Annotator', cv2.WINDOW_AUTOSIZE)
+            cv2.setWindowTitle('Cell Annotator', window)
+            cv2.imshow('Cell Annotator', together)
+            
+            # cv2.resizeWindow('Cell Annotator', together.shape[1], together.shape[0]) 
+    
+#----------------------------------annotate-----------------------------------#
+            
+            # init back (to allow for returning to previous cell)
+            back = False
+            
+            # init valid to check if response is valid
+            valid = False
+            
+################# LOOP UNTIL VALID LABEL RESPONSE IS DETECTED #################
 
-                            # if not possible, raise error
-                            if not back:
-                                print('UNABLE TO RETURN')
-                                print('cell: %2d of %2d --> class: ' % (mask_id, num_masks), end='')
-                                cv2.setWindowTitle('Cell Annotator', 'UNABLE TO RETURN') 
-                        
-                        #------------------------key not in labels dictionary-------------------------#
-                        '''
-                    # if label is not in labels dictionary, raise error
-                    elif label not in list(labels_dict.keys()) + man_edge:
-                        print('unrecognized label')
-                        #print('cell: %2d of %2d --> class: ' % (mask_id, num_masks), end='')
-                        print('cell: %2d of %2d --> class: ' % (mask_id_index, num_masks), end='')
-                        cv2.setWindowTitle('Cell Annotator', 'ERROR: UNRECOGNIZED LABEL')    
-                    
-    #--------------------------------valid label----------------------------------#
+            while not valid:
+        
+                # wait for user entry and store
+                res = cv2.waitKey(0)
+                label = chr(res)
+                # convert label to integer if number
+                try:
+                    label = int(label)
+                except ValueError:
+                    label = label
 
-                    # add label if valid
-                    else:
-                        # activate valid input
-                        valid = True
-                        if label in man_edge:
-                            label = edge_key
-                            print(labels_dict[label]+' (manually assigned)')
-                        else:
-                            print(labels_dict[label])
-                        #labels.append(label)
-                        labels[mask_id] = label
-                        visited[mask_id] += 1
-    #--------------------------response to valid label----------------------------#
+#----------------------------------exit key-----------------------------------#
 
-                # if exit key is pressed in valid loop, break out of cell loop
+                # if exit key is pressed, activate exited condition and break out of valid loop
                 if label in exit_key:
+                    exited = True
+                    print('\n')
+                    print('-'*53)
+                    print('EXITING ANNOTATOR...')
                     break
-                # if back is triggered, reset to false and revert to previous cell
-                elif back:
-                    back = False
-                # continue to next cell if everything is fine
+                
+#---------------------------show labels dictionary----------------------------#
+
+                elif label in show_label:
+                    print('\n')
+                    print('labels:')
+                    for k,v in labels_dict.items():
+                        if v=='edge':
+                            print('\t%3s: %-8s\t(automatically assigned)' %(k,v))
+                        else:
+                            print('\t%3s: %s' %(k,v))
+                    print()
+                    print('manually assign edge key(s): ', man_edge)
+                    print('back key(s): ', back_key)
+                    print('exit key(s): ', exit_key)
+                    print()
+                    print('cell: %2d of %2d --> class: ' % (mask_id, num_masks), end='')
+                
+#----------------------------------back key-----------------------------------#                
+                
+                # if back key is pressed, attempt to go back one cell
+                elif label in back_key:
+                    # reverse through labels to check if possible
+                    for index, lab in enumerate(labels[::-1]):    
+                        # if possible, reset to that cell
+                        if lab != str(edge_key) + 'auto':
+                            # activate back condition and valid input
+                            back = True
+                            valid = True
+                            # reset cell number
+                            mask_id = len(labels) - index
+                            # reset labels
+                            labels = labels[:mask_id-1]
+                            print('BACK TO CELL', mask_id)
+                            break
+
+                    # if not possible, raise error
+                    if not back:
+                        print('UNABLE TO RETURN')
+                        print('cell: %2d of %2d --> class: ' % (mask_id, num_masks), end='')
+                        cv2.setWindowTitle('Cell Annotator', 'UNABLE TO RETURN') 
+
+#------------------------key not in labels dictionary-------------------------#
+
+                # if label is not in labels dictionary, raise error
+                elif label not in list(labels_dict.keys()) + man_edge:
+                    print('unrecognized label')
+                    print('cell: %2d of %2d --> class: ' % (mask_id, num_masks), end='')
+                    cv2.setWindowTitle('Cell Annotator', 'ERROR: UNRECOGNIZED LABEL')    
+                
+#--------------------------------valid label----------------------------------#
+
+                # add label if valid
                 else:
-                    #mask_id += 1
-                    mask_id_index += 1
-            
-    #--------------check if number of labels match number of cells----------------#
-            
-            # if exit key is pressed in cell loop, break out of correct loop   
+                    # activate valid input
+                    valid = True
+                    if label in man_edge:
+                        label = edge_key
+                        print(labels_dict[label]+' (manually assigned)')
+                    else:
+                        print(labels_dict[label])
+                    labels.append(label)
+
+#--------------------------response to valid label----------------------------#
+
+            # if exit key is pressed in valid loop, break out of cell loop
             if label in exit_key:
                 break
+            # if back is triggered, reset to false and revert to previous cell
+            elif back:
+                back = False
+            # continue to next cell if everything is fine
+            else:
+                mask_id += 1
         
-            # raise error if there is not a label for every cell in tile and repeat tile annotation
-            if len(labels) != num_masks-1:  #add -1 because we always skip mask_id 0
-                # activate repeat condition
-                repeat = True
-                print()
-                print('ERROR: number of labels does not match number of cells, repeating \''+os.path.relpath(tile)+'\' ...')
-                print()
-            
-            # fix and save labels and move files if all is good
-            else:            
-                # activate correct condition
-                correct = True
-                
-                # fix automatic edge label
-                #for i,lab in enumerate(labels):
-                for i,lab in labels.items():
-                    if lab == str(edge_key) + 'auto':
-                        labels[i] = edge_key
-                    else:
-                        pass
-            
-        for i in mask_id_values:
-            if visited[i] == 1:
-                labels_full.append(labels[i])
-                
+#--------------check if number of labels match number of cells----------------#
         
-        #print(f"Slize {z}")
-        #print("labels for this slice: ",labels)
-        #print("labels full: ",labels_full)
-        #print([(i, visited[i]) for i in range(len(visited))])
+        # if exit key is pressed in cell loop, break out of correct loop   
+        if label in exit_key:
+            break
+    
+        # raise error if there is not a label for every cell in tile and repeat tile annotation
+        if len(labels) != num_masks:
+            # activate repeat condition
+            repeat = True
+            print()
+            print('ERROR: number of labels does not match number of cells, repeating \''+os.path.relpath(tile)+'\' ...')
+            print()
+        
+        # fix and save labels and move files if all is good
+        else:            
+            # activate correct condition
+            correct = True
+            
+            # fix automatic edge label
+            for i,lab in enumerate(labels):
+                if lab == str(edge_key) + 'auto':
+                    labels[i] = edge_key
+                else:
+                    pass
+                
+            # convert labels to object np.array (for proper npz saving) if any labels are strings
+            if any([isinstance(i,str) for i in labels]):
+                labels = np.array(labels, dtype='object')
+            
+            # save and move files
+            # get file name, position/data paths, and annotated data path
+            file_name = os.path.basename(tile)
+            position_path = os.path.dirname(tile)
+            position_folder = os.path.basename(position_path)            
+            data_folder = os.path.basename(os.path.dirname(position_path))
+            annotated_data_path = os.path.join(results_folder,data_folder)
+            
+            # get finished and results paths
+            results_path = os.path.join(annotated_data_path, position_folder+'_results', file_name[:-7]+'annotated.npz')
+            finished_path = os.path.join(position_path+'_finished', file_name)
+           
+            # create results and finished folders if not already created
+            # new annotated data folder
+            if not os.path.isdir(annotated_data_path):
+                os.makedirs(annotated_data_path)
+            # new annotated position folder
+            if not os.path.isdir(os.path.dirname(results_path)):
+                os.makedirs(os.path.dirname(results_path))
+            # finished position folder
+            if not os.path.isdir(os.path.dirname(finished_path)):
+                os.makedirs(os.path.dirname(finished_path))
 
-    
-        # convert labels to object np.array (for proper npz saving) if any labels are strings
-        #if any([isinstance(i,str) for i in labels]):
-            #labels = np.array(labels, dtype='object')
-    if any([isinstance(i,str) for i in labels_full]):
-        labels_full = np.array(labels_full, dtype='object')
-    
-    
-    # save and move files
-    # get file name, position/data paths, and annotated data path
-    file_name = os.path.basename(tile)
-    position_path = os.path.dirname(tile)
-    position_folder = os.path.basename(position_path)            
-    data_folder = os.path.basename(os.path.dirname(position_path))
-    annotated_data_path = os.path.join(results_folder,data_folder)
-    
-    # get finished and results paths
-    results_path = os.path.join(annotated_data_path, position_folder+'_results', file_name[:-7]+'annotated.npz')
-    finished_path = os.path.join(position_path+'_finished', file_name)
-    
-    # create results and finished folders if not already created
-    # new annotated data folder
-    if not os.path.isdir(annotated_data_path):
-        os.makedirs(annotated_data_path)
-    # new annotated position folder
-    if not os.path.isdir(os.path.dirname(results_path)):
-        os.makedirs(os.path.dirname(results_path))
-    # finished position folder
-    if not os.path.isdir(os.path.dirname(finished_path)):
-        os.makedirs(os.path.dirname(finished_path))
+            # save annotated info for tile once all cells have been labeled
+            save_dict = {'raw': raw,
+                         'masks': masks,
+                         'labels': [labels_dict[j] for j in labels],
+                         f'labels_{ANNOTATOR_INITIALS}': [labels_dict[j] for j in labels],
+                         'labels_dict': labels_dict,
+                         'confirmed': []
+                         }
+            
+            np.savez(results_path, **save_dict)
+            # move file to completed folder
+            os.replace(tile, finished_path)
 
-    # save annotated info for tile once all cells have been labeled
-    '''save_dict = {'raw': raw,
-                    'masks': masks,
-                    #'labels': [labels_dict[j] for j in labels],
-                    'labels': [labels_dict[j] for j in labels_full],
-                    #f'labels_{ANNOTATOR_INITIALS}': [labels_dict[j] for j in labels],
-                    f'labels_{ANNOTATOR_INITIALS}': [labels_dict[j] for j in labels_full],
-                    'labels_dict': labels_dict,
-                    'confirmed': []
-                    }'''
-    save_dict = {'raw': raw_full,
-                'masks': masks_full,
-                    #'labels': [labels_dict[j] for j in labels],
-                'labels': [labels_dict[j] for j in labels_full],
-                    #f'labels_{ANNOTATOR_INITIALS}': [labels_dict[j] for j in labels],
-                f'labels_{ANNOTATOR_INITIALS}': [labels_dict[j] for j in labels_full],
-                'labels_dict': labels_dict,
-                'confirmed': []
-                    }
-    
-    np.savez(results_path, **save_dict)
-    # move file to completed folder
-    os.replace(tile, finished_path)
-
-    # print paths
-    short_path = os.path.relpath(tile)
-    short_results = os.path.relpath(results_path)     
-    short_finished = os.path.relpath(finished_path)            
-    print()
-    print('FINISHED --> \''+short_path+'\'')
-    print(' RESULTS --> \''+short_results+'\'')
-    print('    TILE --> \''+short_finished+'\'')
-    print()
+            # print paths
+            short_path = os.path.relpath(tile)
+            short_results = os.path.relpath(results_path)     
+            short_finished = os.path.relpath(finished_path)            
+            print()
+            print('FINISHED --> \''+short_path+'\'')
+            print(' RESULTS --> \''+short_results+'\'')
+            print('    TILE --> \''+short_finished+'\'')
+            print()
 
 #---------------------------------(exit key)----------------------------------#
 
